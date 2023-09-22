@@ -113,8 +113,8 @@ class Cluster():
 
         return gen_tuple, item
 
-    #def tuple_enlargement(self, item: Item, global_ranges: Dict[str, Range], norm_il: bool, max_header: str) -> float:
-    def tuple_enlargement(self, item: Item, global_ranges: Dict[str, Range], norm_il: bool) -> float:
+
+    def tuple_enlargement(self, item: Item, global_ranges: Dict[str, Range]) -> float:
         """Calculates the enlargement value for adding <item> into this cluster
 
         Args:
@@ -124,13 +124,13 @@ class Cluster():
         Returns: The information loss if we added item into this cluster
 
         """
-        given = self.information_loss_given_t(item, global_ranges, norm_il)
-        current = self.information_loss(global_ranges, norm_il)
+        given = self.information_loss_given_t(item, global_ranges)
+        current = self.information_loss(global_ranges)
 
         return (given - current) / len(self.ranges)
 
-    #def cluster_enlargement(self, cluster, global_ranges: Dict[str, Range], norm_il: bool, max_header: str) -> float:
-    def cluster_enlargement(self, cluster, global_ranges: Dict[str, Range], norm_il: bool) -> float:
+    
+    def cluster_enlargement(self, cluster, global_ranges: Dict[str, Range]) -> float:
         """Calculates the enlargement value for merging <cluster> into this cluster
 
         Args:
@@ -140,13 +140,13 @@ class Cluster():
         Returns: The information loss upon merging cluster with this cluster
 
         """
-        given = self.information_loss_given_c(cluster, global_ranges, norm_il) #self.information_loss_given_c(cluster, global_ranges, norm_il, max_header)
-        current = self.information_loss(global_ranges, norm_il) #self.information_loss(global_ranges, norm_il, max_header)
+        given = self.information_loss_given_c(cluster, global_ranges) 
+        current = self.information_loss(global_ranges) 
 
         return (given - current) / len(self.ranges)
 
-    #def information_loss_given_t(self, item: Item, global_ranges: Dict[str, Range], norm_il: bool, max_header: str) -> float:
-    def information_loss_given_t(self, item: Item, global_ranges: Dict[str, Range], norm_il: bool) -> float:
+    
+    def information_loss_given_t(self, item: Item, global_ranges: Dict[str, Range]) -> float:
         """Calculates the information loss upon adding <item> into this cluster
 
         Args:
@@ -165,15 +165,12 @@ class Cluster():
                 lower=min(header_range.lower, item.data[header]),
                 upper=max(header_range.upper, item.data[header])
             )
-            if(norm_il):
-                loss += updated.upper - updated.lower ##(updated / global_range) * (global_ranges[header] / global_ranges[max_header])
-            else:
-                loss += updated / global_range
+            loss += updated / global_range
 
 
         return loss
 
-    def information_loss_given_c(self, cluster, global_ranges: Dict[str, Range], norm_il: bool) -> float:
+    def information_loss_given_c(self, cluster, global_ranges: Dict[str, Range]) -> float:
         """Calculates the information loss upon merging <cluster> into this cluster
 
         Args:
@@ -192,15 +189,13 @@ class Cluster():
                 lower=min(header_range.lower, cluster.ranges[header].lower),
                 upper=max(header_range.upper, cluster.ranges[header].upper)
             )
-            if(norm_il):
-                loss += updated.upper - updated.lower #(updated / global_range) * (global_ranges[header] / global_ranges[max_header])
-            else:
-                loss += updated / global_range
+
+            loss += updated / global_range
 
         return loss
 
-    #def information_loss(self, global_ranges: Dict[str, Range], norm_il: bool, max_header: str) -> float:
-    def information_loss(self, global_ranges: Dict[str, Range], norm_il: bool) -> float:
+    
+    def information_loss(self, global_ranges: Dict[str, Range]) -> float:
         """Calculates the information loss of this cluster
 
         Args:
@@ -213,10 +208,8 @@ class Cluster():
 
         for header, header_range in self.ranges.items():
             global_range = global_ranges[header]
-            if(norm_il):
-                loss += header_range.upper - header_range.lower #(header_range / global_range) * (global_range / global_ranges[max_header])
-            else:
-                loss += header_range / global_range
+
+            loss += header_range / global_range
             
         return loss
 

@@ -33,8 +33,6 @@ class Parameters():
         self.dp = True
         self.big_beta = 1
         self.history = False
-        self.norm_il = False ### NEW
-        self.max_header = "week" ### NEW
 
         # If we have some arguments, try and use those instead
         if args:
@@ -43,13 +41,11 @@ class Parameters():
             self.beta = self.optional(args.beta, self.beta)
             self.mu = self.optional(args.mu, self.mu)
             self.l = self.optional(args.l, self.l)
-            self.tkc = self.optional(args.tkc, self.tkc)
+            self.tkc = self.optional(args.tkc, self.tkc) # NEW
             self.phi = self.optional(args.phi, self.phi)
             self.dp = self.optional(args.disable_dp, self.dp)
             self.big_beta = self.optional(args.big_beta, self.big_beta)
             self.history = self.optional(args.history, self.history)
-            self.norm_il = self.optional(args.norm_il, self.norm_il)
-            self.max_header = self.optional(args.max_header, self.max_header)
             return
 
     def optional(self, value, default):
@@ -153,30 +149,27 @@ class CASTLE():
         # Rolling values of information loss for tau
         self.recent_losses = []
         
-        # NEW dictionary
-        #self.gen_tuples: Dict[str, [[]]] = {}
+        # NEW file to save generalized tuples
         self.gentuple_file: str = ""
         
-        # NEW bool to specify whether attribute differences for information loss shall be normalized
-        self.norm_il: bool = params.norm_il
-        # NEW indicate header with maximum range
-        self.max_range_header: str = params.max_header
 
-    # NEW save the generalised tuples in a dictionary
+    
     def save_generalised_tuples(self, value: Item, orig_value: Item):
-        
+        """
+        #  NEW function to save the generalised tuples in a dictionary
+        """ 
         new_row = []
         # save all generalized values returned by cluster
         for idx, val in value.data.items():
             if "spc" not in idx:
-                new_row.append(val)
+                new_row.append(val) # TODO: do not save internal median value to keep file smaller, but might be needed in future
             
         # save original values for further evaluation
         for idx, val in orig_value.data.items():
             if idx not in ["consumption"]: 
-                #print(idx, "type: ", type(idx))
                 new_row.append(val)
         
+        # save parameter values used in simlation
         new_row.append(self.delta)
         new_row.append(self.k)
         new_row.append(self.beta)
@@ -185,7 +178,6 @@ class CASTLE():
         new_row.append(self.l)
         new_row.append(self.dp)
         new_row.append(self.T_kc)
-        new_row.append(self.norm_il)
         
         with open(self.gentuple_file, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter=",")
@@ -246,6 +238,7 @@ class CASTLE():
 
         self.update_tau()
 
+
     def cycle(self):
         """Performs a 'tick' operation for CASTLE.
 
@@ -263,6 +256,7 @@ class CASTLE():
         # Get the next tuple to be output
         if self.global_tuples:
             self.delay_constraint(self.global_tuples[0])
+
 
     def fudge_tuple(self, t: Item):
         """ Fudges a tuple based on laplace distribution
@@ -292,16 +286,36 @@ class CASTLE():
         output_pids = set()
         output_diversity = set()
 
-        # Get the number of unique PIDs in the cluster
-        #splittable = len(c.contents) >= 2 * self.k and len(c.diversity) >= self.l
-        """NEW"""
-        splittable = len(c.diverse_pids) >= 2 * self.k and len(c.diversity) >= self.l
-        sc = self.split(c) if splittable else [c] #NEW statt self.split_l(c) if splittable else [c]
+        """ 
+            NEW: ks-ano requires k distinct clients, not just tuples, since 1 client can generate several tuples
+                Therefore, we check diverse_pids > 2k instead of len(contens) > 2k
+                ### previous BUG?!: splittable = len(c.contents) >= 2 * self.k and len(c.diversity) >= self.l
+        """
+        splittable = len(c.diverse_pids) >= 2 * self.k and len(c.diversity) >= self.l # FIX
+        #print("splittable = ", splittable)
+        
+        """ 
+            NEW: split_l can generate non-ks-anonymous clusters since it only checks the number of diverse sensitive attr values and NOT of distinct individuals
+                this leads to an exception of "assert len(output_pids) >= self.k" at the and of output_cluster()
+                
+                => instead, we "re-activated" the split function that returns ks-anonymous clusters
+                ### previous BUG?!: sc = self.split_l(c) if splittable else [c] 
+                        IN COMBINATION with previous splittable that only considers len(c.contents) (splittable = len(c.contents) >= 2 * self.k and len(c.diversity) >= self.l)
+        """
+        sc = self.split(c) if splittable else [c] # FIX: use split instead or generate sub-buckets, further described below
+
+        #print("split_cluster: ")
+        #for c in sc:
+        #    print("Cluster size of new cluster: ", len(c.contents))
+        #    print("PIDs contained in new cluster: ")
+        #    for i in c.contents:
+        #        print(i.data.pid)
+        
         for cluster in sc:
             for t in [c for c in cluster.contents]:
                 [generalised, original_tuple] = cluster.generalise(t)
-                self.callback(generalised)
-                self.save_generalised_tuples(generalised, original_tuple) # NEW
+                self.callback(generalised) #  NEW: does not output the clusters anymore
+                self.save_generalised_tuples(generalised, original_tuple) # NEW: save tuples in file for futher processing instead of print()
 
                 if self.history:
                     self.tuple_history.append(original_tuple)
@@ -311,23 +325,29 @@ class CASTLE():
                 self.suppress_tuple(original_tuple)
 
             # Calculate the information loss of the cluster
-            info_loss = cluster.information_loss(self.global_ranges, self.norm_il)
+            info_loss = cluster.information_loss(self.global_ranges)
             self.recent_losses.append(info_loss)
 
             # If there are too many elements in here, remove one
             if len(self.recent_losses) > self.mu:
                 self.recent_losses.pop(0)
 
-            self.update_tau()
+            # update threshold tau based on recent information loss values
+            self.update_tau() 
 
             assert len(output_pids) >= self.k
             assert len(output_diversity) >= self.l
+            """ 
+                TODO: not cluster returns true even if cluster is an object, this is rather confusing
+            """
             assert not cluster 
-            """ not cluster returns true even if cluster is an object"""
+            
 
             self.big_omega.append(cluster)
-            # NEW: FADS adaption: keep only the last x cluster in published list
-            """"""
+            
+            """
+                NEW: FADS adaption: keep only the last t_kc clusters in published list
+            """
             if(len(self.big_omega) >= self.T_kc):
                 self.big_omega = self.big_omega[-self.T_kc:]
 
@@ -347,8 +367,7 @@ class CASTLE():
             chosen = np.random.choice(self.big_gamma, size=sample_size)
 
             # Sum the information loss for each chosen cluster
-            #total_loss = sum(c.information_loss(self.global_ranges, self.norm_il, self.max_range_header) for c in chosen) #NEW
-            total_loss = sum(c.information_loss(self.global_ranges, self.norm_il) for c in chosen)
+            total_loss = sum(c.information_loss(self.global_ranges) for c in chosen)
             self.tau = total_loss / sample_size
 
     def suppress_tuple(self, t: Item):
@@ -382,7 +401,7 @@ class CASTLE():
         e = set()
 
         for cluster in self.big_gamma:
-            e.add(cluster.tuple_enlargement(t, self.global_ranges, self.norm_il)) ## NEW , self.norm_il, self.max_range_header
+            e.add(cluster.tuple_enlargement(t, self.global_ranges)) 
 
         # If e is empty, we should return None so a new cluster gets made
         if not e:
@@ -390,12 +409,12 @@ class CASTLE():
 
         minima = min(e)
         setCmin = [cluster for cluster in self.big_gamma if
-                   cluster.tuple_enlargement(t, self.global_ranges, self.norm_il) == minima] ### NEW , self.norm_il, self.max_range_header
+                   cluster.tuple_enlargement(t, self.global_ranges) == minima] 
 
         setCok = set()
 
         for cluster in setCmin:
-            ilcj = cluster.information_loss_given_t(t, self.global_ranges, self.norm_il) # NEW
+            ilcj = cluster.information_loss_given_t(t, self.global_ranges)
             if ilcj <= self.tau:
                 setCok.add(cluster)
 
@@ -433,8 +452,8 @@ class CASTLE():
             self.callback(generalised)
             self.save_generalised_tuples(generalised, original) # NEW
             return
-            # NOTE: no output_cluster needed because the clusters are already published and cannot be adapted anymore
-            #   hence, the tuple is just added but no output_cluster is needed
+            # NOTE: no output_cluster() needed because the clusters are already published and cannot be adapted anymore
+            #   hence, the tuple is just added and the original tuple is suppressed but no output_cluster() is needed
 
         m = 0
 
@@ -461,6 +480,7 @@ class CASTLE():
 
         self.output_cluster(mc)
 
+
     def split(self, c: Cluster) -> List[Cluster]:
         """Splits a cluster <c>
 
@@ -468,21 +488,20 @@ class CASTLE():
             c: The cluster that needs to be split into smaller clusters
 
         Returns: List of new clusters with tuples inside them
-
         """
         sc = []
 
         # Group everyone by pid
         buckets: Dict[int, List[Item]] = {}
 
-        # Insert all the tuples into the relevant buckets
+        # Insert all the tuples into the relevant buckets, 1 bucket per pid! (that is different in split_l)
         for t in c.contents:
             if t.data.pid not in buckets:
                 buckets[t.data.pid] = []
 
             buckets[t.data.pid].append(t)
 
-        # While k <= number of buckets
+        # While k <= number of buckets, which means that there are still more than k distinct individuals
         while self.k <= len(buckets):
             # Pick a random tuple from a random bucket
             pid = np.random.choice(list(buckets.keys()))
@@ -531,12 +550,12 @@ class CASTLE():
             ti = np.random.choice(bi)
 
             # Find the nearest cluster in sc
-            nearest = min(sc, key=lambda c: c.tuple_enlargement(ti, self.global_ranges, self.norm_il))
+            nearest = min(sc, key=lambda c: c.tuple_enlargement(ti, self.global_ranges))
 
             for t in bi:
                 nearest.insert(t)
                 
-        """ NEW, cluster was not added to big_gama"""
+        """ NEW: beforehand cluster was not added to big_gama = current non-ks cluster list"""
         for c in sc:
             self.big_gamma.append(c)
         """"""
@@ -552,6 +571,18 @@ class CASTLE():
         Returns: List of new clusters with tuples inside them
 
         """
+        """
+            potential BUG:
+                split_l can generate non-ks-anonymous clusters since it only checks the number of diverse sensitive attr values and NOT of distinct individuals
+                - the buckets are generated for different values of the sensitive attribute
+                - this does not consider that different individuals can have the same sensitive attribute
+                - under specific circumstances this can lead to problem => use the dataset "example_data_raise_split_l_excep.csv" as input to raise this exception
+                => this leads to an exception of "assert len(output_pids) >= self.k" at the and of output_cluster()
+
+            possible FIX: 
+                generate buckets based on PID and sensitive value 
+                -that means have "subbuckets for different PID values per sensitive attribute bucket
+        """
         sc = []
 
         # Group every tuple by the sensitive attribute
@@ -565,8 +596,12 @@ class CASTLE():
         while len(buckets) >= self.l and sum([len(b) for b in buckets.values()]) >= self.k:
             # Pick a random tuple from a random bucket
             pid = np.random.choice(list(buckets.keys()))
+            """
+                TODO: NOTE that pid is the sensitive value and NOT the individual PID
+                print("PID ", pid)
+            """
             bucket = buckets[pid]
-            t = bucket.pop(np.random.randint(0, len(bucket)))
+            t = bucket.pop(np.random.randint(0, len(bucket))) # choose random element from bucket 
 
             # Create a new subcluster over t
             cnew = Cluster(self.headers)
@@ -581,7 +616,7 @@ class CASTLE():
             for pid, bucket in buckets.items():
 
                 # Sort the bucket by the enlargement value of that cluster
-                key = lambda t: C.tuple_enlargement(t, self.global_ranges, self.norm_il)
+                key = lambda t: C.tuple_enlargement(t, self.global_ranges)
                 sorted_bucket = sorted(bucket, key=key)
 
                 # Count the number of tuples we have
@@ -662,11 +697,13 @@ class CASTLE():
         """
         gamma_c = [cluster for cluster in self.big_gamma if cluster != c]
 
-        # NEW adaptation: check for number of different PIDs instead of length of cluster
-        #while len(c) < self.k or len(c.diversity) < self.l:
-        while len(c.diverse_pids) < self.k: # or len(c.diversity) < self.l:
+        """
+            NEW adaptation: check for number of different PIDs (ksano) instead of number of tuples in cluster (kano)
+            TODO: previous BUG?!: while len(c) < self.k or len(c.diversity) < self.l:
+        """
+        while len(c.diverse_pids) < self.k or len(c.diversity) < self.l: 
             # Get the cluster with the lowest enlargement value
-            key = lambda cl: c.cluster_enlargement(cl, self.global_ranges, self.norm_il)
+            key = lambda cl: c.cluster_enlargement(cl, self.global_ranges)
             lowest_enlargement_cluster = min(gamma_c, key=key)
             items = [t for t in lowest_enlargement_cluster.contents]
 

@@ -137,20 +137,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Whether or not to store a history of all inserted tuples"
     )
-
-    parser.add_argument(
-        "--norm_il",
-        default = False,
-        type=bool,
-        help="Indicate whether or not to normalize the IL magnitudes"        
-    )
-    
-    parser.add_argument(
-        "--max_header",
-        default = "week",
-        type=str,
-        help="Indicate which header has the maximum IL enlargement"        
-    )
     
     return parser
 
