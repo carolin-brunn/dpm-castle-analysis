@@ -8,10 +8,7 @@ Data anonymization is crucial to allow the widespread adoption of some technolog
 The CASTLE implementation used for our simulations is mainly based on the publicly available CASTLEGUARD implementation ([CASTLEGUARD](https://github.com/hallnath1/CASTLEGUARD), corresponding [paper](https://doi.org/10.1109/DASC-PICom-CBDCom-CyberSciTech49142.2020.00102)) with some adaptations.
 
 The code is written and run with Python (3.11.4) and was executed with the following packages: 
-numpy (1.24.3)
-pandas (1.5.3)
-matplotlib (3.7.1)
-seaborn (0.12.2)
+numpy (1.24.3), pandas (1.5.3), matplotlib (3.7.1), seaborn (0.12.2).
 
 ### CASTLEGUARD Adaptations
 All essential adaptations that we did on the code are marked with comments. During our work, we found potential bugs or exceptions that we briefly describe here. 
@@ -37,7 +34,7 @@ Additionally, uncomment 2 lines of code in `./src/castle.py`:
 
 ### Dataset
 
-The dataset used for our simulations is available at the UC Irvine Machine Learning Repository (https://doi.org/10.24432/C58C86) We include the raw dataset as a .zip file to make reproduction of our simulations easier.
+The dataset used for our simulations is available at the UC Irvine Machine Learning Repository (https://doi.org/10.24432/C58C86).
 
 According to the description of the dataset, the consumption values are given in kW. However, based on the magnitude of the values, this does not seem realistic since the values are too high for that.
 To further analyze the consumption values and course of values in the dataset, we provide the functionality in `./dataAnalysis_plotting/generate_SLA_fromConsData.py`.
@@ -63,6 +60,8 @@ To run the simulation from the command line, access the `src/` folder and execut
 Change the values for k and delta to simulate different settings.
 
 Alternatively, start the simulations for different settings with the bash scripts provided in the `src/` folder.
+
+The datasets generated in the anonymizatino process can be found in the folder `./anonymized_data`. For reproduction purposes, we include the results we obtained in a `simulationResults.zip` folder.
 
 
 ### Data Analysis
